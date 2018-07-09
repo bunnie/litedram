@@ -70,6 +70,20 @@ class BankMachine(Module):
                 openrow.eq(slicer.row(cmd_buffer.source.adr))
             )
 
+        # Four Activate Window
+        activate = Signal()
+        activate_allowed = Signal(reset=1)
+        tfaw = settings.timing.tFAW
+        if tfaw is not None:
+            activate_count = Signal(max=tfaw)
+            activate_window = Signal(tfaw)
+            self.sync += activate_window.eq(Cat(activate, activate_window))
+            for i in range(tfaw):
+                next_activate_count = Signal(max=tfaw)
+                self.comb += next_activate_count.eq(activate_count + activate_window[i])
+                activate_count = next_activate_count
+            self.comb += If(activate_count >=4, activate_allowed.eq(0))
+
         # Address generation
         sel_row_adr = Signal()
         self.comb += [
@@ -112,7 +126,9 @@ class BankMachine(Module):
                         NextState("PRECHARGE")
                     )
                 ).Else(
-                    NextState("ACTIVATE")
+                    If(activate_allowed,
+                        NextState("ACTIVATE")
+                    )
                 )
             )
         )
@@ -130,6 +146,7 @@ class BankMachine(Module):
             track_close.eq(1)
         )
         fsm.act("ACTIVATE",
+            activate.eq(1),
             sel_row_adr.eq(1),
             track_open.eq(1),
             cmd.valid.eq(1),
